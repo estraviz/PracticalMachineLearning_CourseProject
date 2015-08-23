@@ -1,0 +1,166 @@
+---
+title: "Human Activity Recognition - a brief ML approach"
+author: "[Javier Estraviz](https://github.com/estraviz)"
+date: "August 23, 2015"
+output: html_document
+---
+
+Synopsis
+========
+
+This exercise corresponds to the course project for the Practical Machine Learning 
+course in the Data Science specialization on Coursera. The data for this project 
+correspond to a well-known Human Activity Recognition experiment (see: 
+[http://groupware.les.inf.puc-rio.br/har](http://groupware.les.inf.puc-rio.br/har)). 
+
+Our goal is to predict the classe variable in the training set. We'll explain the 
+assumptions adopted below and compare the results offered by a couple of models 
+of our interest.
+
+Data Processing
+===============
+
+We begin by setting up manually the working directory to the location of this
+current file. Then, we create (if it does not exist yet) a new directory where 
+the data of the project will be allocated:
+
+```{r}
+library(caret)
+library(randomForest)
+
+if(!file.exists("./data")) {
+  dir.create("data")
+}
+
+if(!file.exists("./data/pml-training.csv")) {
+  urlTrain <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+  download.file(urlTrain,destfile="./data/pml-training.csv",method="curl") 
+}
+pmlTraining <- read.csv("./data/pml-training.csv", header=TRUE, 
+                        na.strings=c("", "NA", "#DIV/0!"))
+
+if(!file.exists("./data/pml-testing.csv")) {
+  urlTest <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+  download.file(urlTest,destfile="./data/pml-testing.csv",method="curl") 
+}
+pmlTesting <- read.csv("./data/pml-testing.csv", header=TRUE, 
+                       na.strings=c("", "NA", "#DIV/0!"))
+```
+
+Note that we have used some string values for NA values. This is because we have 
+first downloaded the files and inspected the data. Columns with NA's will be 
+useless and eliminated from our analysis. 
+
+We now perform the following commands to inspect what we've got by now:
+
+```{r}
+dim(pmlTraining)
+dim(pmlTesting)
+```
+
+So 19,622 observations and 160 features in the original training set and only 20
+observations and the same number of features in the original testing set. 
+
+As we he mentioned above, we eliminate columns with NA values, this way:
+
+```{r}
+pmlTrainingWithoutNA <- pmlTraining[, colSums(is.na(pmlTraining)) == 0] 
+pmlTestingWithoutNA <- pmlTesting[, colSums(is.na(pmlTesting)) == 0] 
+
+dim(pmlTraining)
+dim(pmlTesting)
+```
+
+This reduces the scope to 60 variables instead of 160. In adition to this, we
+supress the first seven columns of the data, as we could say they correspond to
+metadata (info about each experiment):
+
+```{r}
+pmlTrainingOnlyValidColumns <- pmlTrainingWithoutNA[, -(1:7)] 
+pmlTestingOnlyValidColumns <- pmlTestingWithoutNA[, -(1:7)] 
+```
+
+Data slicing
+============
+
+Now, we will be working only with the original training set data (with the 
+processing performed above) and set aside the 20 rows of testing data for the 
+second part of the exercise. Thus, we split this training set into a new training
+set (70% of the cases) and a new testing set (the remaining 30%):
+
+```{r}
+set.seed(12345)
+inTrain <- createDataPartition(y=pmlTrainingOnlyValidColumns$classe, p=0.7, 
+                               list=FALSE)
+training <- pmlTrainingOnlyValidColumns[inTrain, ]
+testing <- pmlTrainingOnlyValidColumns[-inTrain, ]
+```
+
+Prediction models
+=================
+
+Machine Learning models effectiveness depends heavily on the fine tuning on some 
+parameters. Here we are going to use a couple of models and compare results. We 
+want to compare the accuracy of the gradient boosted model (gbm) vs the random 
+forest model (RF). 
+
+```{r}
+modelFit <- train(classe ~., data=training, method="gbm", verbose=FALSE)
+print(modelFit)
+prediction <- predict(modelFit, testing[,-ncol(testing)])
+tab <- table(prediction, testing$classe)
+tab
+confusionMatrix(prediction, testing$classe)
+```
+
+We obtain an accuracy of 95.9% with this model. The previous print instruction
+provides us with information of the optimal parameters.
+
+Now it's time for the RF model. First, we tune the randomForest for the optimal
+mtry parameter. We use 150 trees (for comparison with the previous model). We do 
+this with tuneRF, as follows:
+
+```{r}
+tuneRF(x = training[, -ncol(training)], y=training[, ncol(training)], 
+       stepFactor=0.5, mtryStart=2, ntreeTry=150)
+```
+
+So our optimal value of mtry with respect to the out-of-bag error estimate is 
+mtry = 4. Next, we use the randomForest function to obtain our new model and make
+predictions for the testing set:
+
+```{r}
+modelRF <- randomForest(classe ~., data=training, mtry=4, ntree=150)
+print(modelRF)
+predictionRF <- predict(modelRF, testing[,-ncol(testing)])
+tabRF <- table(predictionRF, testing$classe)
+tabRF
+confusionMatrix(predictionRF, testing$classe)
+```
+
+In this case we obtain an accuracy of almost 99.0%, improving the results of the
+previous model. So we will keep this RF model as it seems to be quite optimal
+for future predictions.
+
+Appendix
+========
+
+We have to use the provided function to obtain predictions of the original test
+set, for our considered best model in this analysis (modelRF). The following
+set of instructions write twenty txt files that will be used in the submission 
+for the autograder on Coursera:
+
+```{r}
+pml_write_files = function(x) {
+    for (i in 1:length(x)){
+        filename = paste0("problem_id_",i,".txt")
+        write.table(x[i], file=filename, quote=FALSE, row.names=FALSE, 
+                    col.names=FALSE) }
+}
+
+answers <- as.character(predict(modelRF, newdata=pmlTestingOnlyValidColumns))
+pml_write_files(answers)
+```
+
+```
+
