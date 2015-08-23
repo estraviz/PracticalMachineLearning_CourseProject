@@ -138,7 +138,7 @@ tabRF
 confusionMatrix(predictionRF, testing$classe)
 ```
 
-In this case we obtain an accuracy of almost 99.0%, improving the results of the
+In this case we obtain an accuracy of almost 99.0%(out of sample error under 1%), improving the results of the
 previous model. So we will keep this RF model as it seems to be quite optimal
 for future predictions.
 
